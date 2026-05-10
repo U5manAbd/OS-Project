@@ -1,0 +1,47 @@
+#include <gtk/gtk.h>
+#include <sys/wait.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+double execute_simple(char *cmd, GtkWidget *output_widget) {
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+
+    int pipefd[2];
+    pipe(pipefd);
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        dup2(pipefd[1], STDERR_FILENO);
+
+        char *args[64];
+        int i = 0;
+        char *token = strtok(cmd, " ");
+        while (token != NULL) { 
+            args[i++] = token; 
+            token = strtok(NULL, " "); 
+        }
+        args[i] = NULL;
+
+        execvp(args[0], args);
+        perror("Exec failed");
+        exit(1);
+    } else {
+        close(pipefd[1]);
+        char buffer[4096] = {0};
+        read(pipefd[0], buffer, sizeof(buffer)-1);
+        
+        GtkTextBuffer *tb = gtk_text_view_get_buffer(GTK_TEXT_VIEW(output_widget));
+        gtk_text_buffer_set_text(tb, buffer, -1);
+        
+        wait(NULL);
+        gettimeofday(&end, NULL);
+        
+        return (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+    }
+}
